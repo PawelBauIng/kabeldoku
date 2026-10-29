@@ -61,7 +61,7 @@
           <label class="lbl" for="newName">Projektname</label>
           <input id="newName" type="text" placeholder="z. B. Netzanschluss Halle 3" autocomplete="off">
           <div class="row">
-            <label class="btn primary">Kabelplan wählen und anlegen<input type="file" id="newPlan" accept="image/*,application/pdf,.pdf"></label>
+            <label class="btn primary">Kabelplan(e) wählen und anlegen<input type="file" id="newPlan" accept="image/*,application/pdf,.pdf" multiple></label>
             <label class="btn">Projektdatei öffnen<input type="file" class="importInput"></label>
           </div>
           <button class="btn demoBtn" type="button" style="width:100%;margin-top:8px">Demo-Projekt mit Testplan laden</button>
@@ -115,12 +115,12 @@
   </div>
 </div>
 
-<div class="lightbox" id="lightbox" hidden><img id="lbImg" alt="Foto in voller Größe"><button type="button" id="lbClose">Schließen</button></div>
+<div class="lightbox" id="lightbox" hidden><img id="lbImg" alt="Foto in voller Größe"><button type="button" id="lbClose">Schließen</button><button type="button" class="lbnav" id="lbPrev" aria-label="Vorheriges Foto">‹</button><button type="button" class="lbnav" id="lbNext" aria-label="Nächstes Foto">›</button><span id="lbCount"></span></div>
 
 <input type="file" id="camInput" accept="image/*" capture="environment">
-<input type="file" id="galInput" accept="image/*">
+<input type="file" id="galInput" accept="image/*" multiple>
 <input type="file" id="planInput" accept="image/*,application/pdf,.pdf">
-<input type="file" id="addPlanInput" accept="image/*,application/pdf,.pdf">
+<input type="file" id="addPlanInput" accept="image/*,application/pdf,.pdf" multiple>
 
 <script src="lib/jszip.min.js"></script>
 <script src="app.js"></script>
