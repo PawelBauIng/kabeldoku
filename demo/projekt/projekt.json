@@ -1,0 +1,79 @@
+{
+ "format": "kabel-fotodoku",
+ "version": 1,
+ "app": "1.0.0",
+ "gespeichert": "2026-10-29T11:00:00.000Z",
+ "projekt": {
+  "id": "1d6fe6d7-5f95-43b4-a1fe-d447f137102a",
+  "name": "Demo: Netzanschluss Halle 3",
+  "planName": "Testplan_Kabeltrasse.pdf",
+  "planW": 4800,
+  "planH": 3000,
+  "planGeaendert": "2026-10-29T07:30:00.000Z",
+  "erstellt": "2026-10-29T07:30:00.000Z",
+  "geaendert": "2026-10-29T11:00:00.000Z",
+  "geloescht": []
+ },
+ "punkte": [
+  {
+   "id": "88e165ed-064d-4116-9bf7-16886a22bcbf",
+   "nr": 1,
+   "x": 0.125,
+   "y": 0.87333,
+   "notiz": "Querung Musterstraße, 2x Kabelschutzrohr DN 150, Tiefe 1,20 m",
+   "zeit": "2026-10-29T08:12:00.000Z",
+   "geaendert": "2026-10-29T08:12:00.000Z",
+   "foto": "fotos/88e165ed-064d-4116-9bf7-16886a22bcbf.jpg"
+  },
+  {
+   "id": "1b32edc4-c76d-4e05-994d-e7fb945171d8",
+   "nr": 2,
+   "x": 0.27083,
+   "y": 0.77667,
+   "notiz": "Muffe M1, Verbindungsmuffe NAYY-J 4x240, Tiefe 0,80 m, Sandbett 10 cm",
+   "zeit": "2026-10-29T08:37:00.000Z",
+   "geaendert": "2026-10-29T08:37:00.000Z",
+   "foto": "fotos/1b32edc4-c76d-4e05-994d-e7fb945171d8.jpg"
+  },
+  {
+   "id": "7d6d756d-a439-42e8-8777-8c233aaae0d1",
+   "nr": 3,
+   "x": 0.35417,
+   "y": 0.77667,
+   "notiz": "Kreuzung Gasleitung DN 100, Abstand 0,35 m, Schutzplatte eingelegt",
+   "zeit": "2026-10-29T09:05:00.000Z",
+   "geaendert": "2026-10-29T09:05:00.000Z",
+   "foto": "fotos/7d6d756d-a439-42e8-8777-8c233aaae0d1.jpg"
+  },
+  {
+   "id": "f2c302c7-6ffb-4a18-9b22-c686a186042a",
+   "nr": 4,
+   "x": 0.41667,
+   "y": 0.77667,
+   "notiz": "Kabelschacht KS1, Richtungswechsel nach Norden, Reserveschleife 3 m",
+   "zeit": "2026-10-29T09:41:00.000Z",
+   "geaendert": "2026-10-29T09:41:00.000Z",
+   "foto": "fotos/f2c302c7-6ffb-4a18-9b22-c686a186042a.jpg"
+  },
+  {
+   "id": "9de65b24-d22c-4bfe-aa0d-0492558a96f2",
+   "nr": 5,
+   "x": 0.41667,
+   "y": 0.60667,
+   "notiz": "Trasse am Parkplatz, Trassenwarnband 0,40 m über Kabel",
+   "zeit": "2026-10-29T10:20:00.000Z",
+   "geaendert": "2026-10-29T10:20:00.000Z",
+   "foto": "fotos/9de65b24-d22c-4bfe-aa0d-0492558a96f2.jpg"
+  },
+  {
+   "id": "33da2870-e8a8-4ecb-acf0-a17590c8d53b",
+   "nr": 6,
+   "x": 0.56563,
+   "y": 0.5,
+   "notiz": "Gebäudeeintritt Halle 3, Foto folgt",
+   "zeit": "2026-10-29T10:55:00.000Z",
+   "geaendert": "2026-10-29T10:55:00.000Z",
+   "foto": null
+  }
+ ]
+}
