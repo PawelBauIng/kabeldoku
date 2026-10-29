@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' blob: data:; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Kabel-Fotodoku</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Kabeldoku">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#FAFAF8">
+<link rel="stylesheet" href="styles.css">
+<style>:root{padding-top:env(safe-area-inset-top,0px)}</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <button class="brand" type="button" id="btnProjects" aria-label="Projekte anzeigen">
+      <span class="title">Kabel<span>·</span>Fotodoku</span>
+      <small id="projName">Kein Projekt</small>
+    </button>
+    <div class="actions">
+      <button class="btn" id="btnList" type="button" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+        <span class="lbl-wide">Fotopunkte</span> <span class="count" id="count">0</span>
+      </button>
+      <button class="btn primary" id="btnMenu" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M4 21h16"/></svg>
+        <span>Speichern &amp; Export</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <img class="plan" id="plan" alt="Kabelplan" hidden>
+    <div class="pins" id="pins"></div>
+    <div class="zoom" id="zoomCtl" hidden>
+      <button type="button" id="zIn" aria-label="Hineinzoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
+      <button type="button" id="zOut" aria-label="Herauszoomen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg></button>
+      <button type="button" id="zFit" aria-label="Ganzen Plan zeigen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    </div>
+    <div class="hint" id="hint" hidden></div>
+
+    <div class="empty" id="empty" hidden>
+      <div class="card">
+        <h2>Fotopunkte auf dem Kabelplan</h2>
+        <p>Alles bleibt auf diesem Gerät. Übertragen wird nur, was du selbst als Projektdatei speicherst und weitergibst.</p>
+        <ol class="steps">
+          <li><b>1</b><span>Am Laptop: Projekt anlegen und den Kabelplan (PDF oder Bild) laden.</span></li>
+          <li><b>2</b><span>„Projektdatei speichern“ und aufs iPad bringen (AirDrop, OneDrive, Mail). Dort „Projektdatei öffnen“.</span></li>
+          <li><b>3</b><span>Auf der Baustelle Stelle antippen, Foto aufnehmen, Notiz dazu.</span></li>
+          <li><b>4</b><span>Projektdatei zurück an den Laptop, öffnen, Stände werden zusammengeführt. Dann exportieren.</span></li>
+        </ol>
+        <div class="newproj">
+          <label class="lbl" for="newName">Projektname</label>
+          <input id="newName" type="text" placeholder="z. B. Netzanschluss Halle 3" autocomplete="off">
+          <div class="row">
+            <label class="btn primary">Kabelplan wählen und anlegen<input type="file" id="newPlan" accept="image/*,application/pdf,.pdf"></label>
+            <label class="btn">Projektdatei öffnen<input type="file" class="importInput" accept=".zip,application/zip"></label>
+          </div>
+          <button class="btn demoBtn" type="button" style="width:100%;margin-top:8px">Demo-Projekt mit Testplan laden</button>
+        </div>
+      </div>
+    </div>
+
+    <section class="sheet" id="sheet" hidden></section>
+
+    <aside class="side" id="list" hidden>
+      <header><h3>Fotopunkte</h3><button class="btn" type="button" data-close="list">Schließen</button></header>
+      <ul id="listUl"></ul>
+    </aside>
+
+    <aside class="side" id="menu" hidden>
+      <header><h3>Speichern &amp; Export</h3><button class="btn" type="button" data-close="menu">Schließen</button></header>
+      <div class="side-body" id="menuBody"></div>
+    </aside>
+
+    <aside class="side" id="projects" hidden>
+      <header><h3>Projekte</h3><button class="btn" type="button" data-close="projects">Schließen</button></header>
+      <div class="side-body" id="projBody"></div>
+    </aside>
+
+    <div class="toast" id="toast" hidden></div>
+    <div class="busy" id="busy" hidden><span id="busyTxt">Bitte warten…</span></div>
+  </main>
+</div>
+
+<div class="modal" id="ready" hidden>
+  <div class="card">
+    <h3 id="readyTitle">Datei bereit</h3>
+    <p id="readyInfo" class="mono"></p>
+    <p class="muted" id="readyHelp"></p>
+    <div class="row">
+      <button class="btn primary" type="button" id="readyShare">Teilen…</button>
+      <button class="btn" type="button" id="readyDl">Herunterladen</button>
+      <button class="btn" type="button" id="readyClose">Fertig</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="confirm" hidden>
+  <div class="card">
+    <h3 id="confirmTitle">Sicher?</h3>
+    <p id="confirmText"></p>
+    <div class="row">
+      <button class="btn danger" type="button" id="confirmYes">Ja</button>
+      <button class="btn" type="button" id="confirmNo">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox" hidden><img id="lbImg" alt="Foto in voller Größe"><button type="button" id="lbClose">Schließen</button></div>
+
+<input type="file" id="camInput" accept="image/*" capture="environment">
+<input type="file" id="galInput" accept="image/*">
+<input type="file" id="planInput" accept="image/*,application/pdf,.pdf">
+
+<script src="lib/jszip.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
