@@ -1,7 +1,7 @@
 /* Kabel-Fotodoku: Fotopunkte auf dem Kabelplan. Alle Daten bleiben lokal im Browser (IndexedDB). */
 (function(){
 "use strict";
-const APP_VERSION="1.0.0";
+const APP_VERSION="1.2.0";
 const FORMAT="kabel-fotodoku";
 const $=id=>document.getElementById(id);
 const stage=$("stage"), planEl=$("plan"), pinsEl=$("pins"), sheet=$("sheet");
@@ -23,8 +23,8 @@ const fmtSize=b=>b>1048576?(b/1048576).toFixed(1).replace(".",",")+" MB":Math.ma
 function toast(msg,ms){const t=$("toast");t.textContent=msg;t.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(()=>t.hidden=true,ms||2800)}
 function busy(on,txt){$("busy").hidden=!on;if(txt)$("busyTxt").textContent=txt}
 function hint(txt,cls){const h=$("hint");h.textContent=txt||"";h.className="hint"+(cls?" "+cls:"");h.hidden=!txt}
-function ask(title,text,yesLabel){return new Promise(res=>{
-  $("confirmTitle").textContent=title;$("confirmText").textContent=text;$("confirmYes").textContent=yesLabel||"Ja";
+function ask(title,text,yesLabel,noLabel){return new Promise(res=>{
+  $("confirmTitle").textContent=title;$("confirmText").textContent=text;$("confirmYes").textContent=yesLabel||"Ja";$("confirmNo").textContent=noLabel||"Abbrechen";$("confirmYes").className="btn "+(noLabel?"primary":"danger");
   $("confirm").hidden=false;
   const done=v=>{$("confirm").hidden=true;$("confirmYes").onclick=$("confirmNo").onclick=null;res(v)};
   $("confirmYes").onclick=()=>done(true);$("confirmNo").onclick=()=>done(false);
@@ -83,9 +83,12 @@ const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k
 
 /* ================= Zustand ================= */
 let projekt=null;       // aktuelles Projekt
-let punkte=[];          // Punkte des Projekts
+let punkte=[];          // alle Punkte des Projekts
+let plan=null;          // aktuell angezeigter Plan
 let planUrl=null;
 const fotoUrls=new Map();
+const sichtbar=()=>plan?punkte.filter(p=>p.planId===plan.id):[];
+const planName=id=>{const q=projekt&&projekt.plaene.find(x=>x.id===id);return q?q.name:"?"};
 let view={s:1,tx:0,ty:0};
 let pending=null, pendingFile=null, pendingUrl=null, noteDraft="";
 let selected=null, moving=null, replaceFor=null;
@@ -96,32 +99,32 @@ async function touchProjekt(){projekt.geaendert=now();await DB.putProjekt(projek
 
 /* ================= Ansicht: Zoom und Verschieben ================= */
 function apply(){
-  if(!projekt||!projekt.plan)return;
-  planEl.style.width=projekt.planW+"px";planEl.style.height=projekt.planH+"px";
+  if(!plan)return;
+  planEl.style.width=plan.w+"px";planEl.style.height=plan.h+"px";
   planEl.style.transform=`translate(${view.tx}px,${view.ty}px) scale(${view.s})`;
   renderPins();
 }
 function fit(){
-  if(!projekt||!projekt.plan)return;const r=stage.getBoundingClientRect();const pad=20;
-  view.s=Math.min((r.width-pad*2)/projekt.planW,(r.height-pad*2)/projekt.planH);
-  view.tx=(r.width-projekt.planW*view.s)/2;view.ty=(r.height-projekt.planH*view.s)/2;apply();
+  if(!plan)return;const r=stage.getBoundingClientRect();const pad=20;
+  view.s=Math.min((r.width-pad*2)/plan.w,(r.height-pad*2)/plan.h);
+  view.tx=(r.width-plan.w*view.s)/2;view.ty=(r.height-plan.h*view.s)/2;apply();
 }
-function minS(){const r=stage.getBoundingClientRect();return Math.min(r.width/projekt.planW,r.height/projekt.planH)*0.5}
+function minS(){const r=stage.getBoundingClientRect();return Math.min(r.width/plan.w,r.height/plan.h)*0.5}
 function zoomAt(f,cx,cy){
   const ns=Math.max(minS(),Math.min(8,view.s*f));const k=ns/view.s;
   view.tx=cx-(cx-view.tx)*k;view.ty=cy-(cy-view.ty)*k;view.s=ns;apply();
 }
-const toWorld=(cx,cy)=>({x:(cx-view.tx)/view.s/projekt.planW,y:(cy-view.ty)/view.s/projekt.planH});
-const toScreen=(x,y)=>({x:view.tx+x*projekt.planW*view.s,y:view.ty+y*projekt.planH*view.s});
+const toWorld=(cx,cy)=>({x:(cx-view.tx)/view.s/plan.w,y:(cy-view.ty)/view.s/plan.h});
+const toScreen=(x,y)=>({x:view.tx+x*plan.w*view.s,y:view.ty+y*plan.h*view.s});
 function centerOn(x,y){
   const r=stage.getBoundingClientRect();if(view.s<0.8)view.s=1;
   const wide=window.innerWidth>=820;
-  view.tx=(wide?(r.width-420)/2:r.width/2)-x*projekt.planW*view.s;
-  view.ty=(wide?r.height/2:r.height*0.3)-y*projekt.planH*view.s;apply();
+  view.tx=(wide?(r.width-420)/2:r.width/2)-x*plan.w*view.s;
+  view.ty=(wide?r.height/2:r.height*0.3)-y*plan.h*view.s;apply();
 }
 const ptrs=new Map();let gest=null;
 stage.addEventListener("pointerdown",e=>{
-  if(!projekt||!projekt.plan||e.target.closest(".zoom,.sheet,.side,.empty,.pin"))return;
+  if(!plan||e.target.closest(".zoom,.sheet,.side,.empty,.pin"))return;
   try{stage.setPointerCapture(e.pointerId)}catch(err){}
   ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
   const r=stage.getBoundingClientRect();
@@ -154,7 +157,7 @@ function endPtr(e){
 stage.addEventListener("pointerup",endPtr);
 stage.addEventListener("pointercancel",endPtr);
 stage.addEventListener("wheel",e=>{
-  if(!projekt||!projekt.plan||e.target.closest(".sheet,.side,.empty"))return;e.preventDefault();
+  if(!plan||e.target.closest(".sheet,.side,.empty"))return;e.preventDefault();
   const r=stage.getBoundingClientRect();zoomAt(Math.exp(-e.deltaY*0.0015),e.clientX-r.left,e.clientY-r.top);
 },{passive:false});
 document.addEventListener("gesturestart",e=>e.preventDefault());
@@ -172,9 +175,9 @@ function tap(cx,cy){
 
 /* ================= Punkte ================= */
 function renderPins(){
-  if(!projekt||!projekt.plan){pinsEl.innerHTML="";return}
+  if(!plan){pinsEl.innerHTML="";return}
   const frag=document.createDocumentFragment();
-  for(const f of punkte){
+  for(const f of sichtbar()){
     const p=toScreen(f.x,f.y);
     const b=document.createElement("button");
     b.type="button";b.className="pin"+(selected===f.id?" sel":"")+(f.foto?"":" nophoto");
@@ -238,7 +241,7 @@ async function saveNew(){
   if(!pending)return;
   try{
     const t=now();
-    const p={id:uid(),projektId:projekt.id,nr:nextNr(),x:round(pending.x),y:round(pending.y),notiz:noteDraft.trim(),zeit:t,geaendert:t,foto:pendingFile||null};
+    const p={id:uid(),projektId:projekt.id,planId:plan.id,nr:nextNr(),x:round(pending.x),y:round(pending.y),notiz:noteDraft.trim(),zeit:t,geaendert:t,foto:pendingFile||null};
     await DB.putPunkt(p);punkte.push(p);await touchProjekt();
     pending=null;clearPendingFile();noteDraft="";sheet.hidden=true;selected=p.id;renderPins();
     toast(fmtNr(p.nr)+" gespeichert");
@@ -263,6 +266,7 @@ function openDetail(id){
     <dl class="facts">
       <dt>Aufgenommen</dt><dd>${esc(fmtZeit(f.zeit))}</dd>
       <dt>Zuletzt geändert</dt><dd>${esc(fmtZeit(f.geaendert))}</dd>
+      <dt>Plan</dt><dd>${esc(planName(f.planId))}</dd>
       <dt>Lage im Plan</dt><dd>x ${Number(f.x).toFixed(3)} · y ${Number(f.y).toFixed(3)}</dd>
     </dl>
     <div class="row">
@@ -316,23 +320,24 @@ $("btnProjects").onclick=()=>{closeSides();renderProjects();$("projects").hidden
 function renderList(){
   const ul=$("listUl");
   if(!punkte.length){ul.innerHTML=`<li class="none">Noch keine Fotopunkte. Tippe auf den Plan, um den ersten zu setzen.</li>`;return}
+  const mehr=projekt.plaene.length>1;
   ul.innerHTML=[...punkte].sort((a,b)=>a.nr-b.nr).map(f=>{const u=fotoUrl(f);return `<li><button type="button" data-id="${esc(f.id)}">
     ${u?`<img class="th" src="${u}" alt="">`:`<span class="th"></span>`}
-    <span style="min-width:0"><span class="t1">${fmtNr(f.nr)}</span><br><span class="t2">${esc(f.notiz||"Keine Notiz")}</span><span class="t3">${esc(fmtZeit(f.zeit))}</span></span></button></li>`}).join("");
-  ul.querySelectorAll("button").forEach(b=>b.onclick=()=>{const f=punkte.find(x=>x.id===b.dataset.id);closeSides();if(f){centerOn(f.x,f.y);openDetail(f.id)}});
+    <span style="min-width:0"><span class="t1">${fmtNr(f.nr)}</span>${mehr?` <span class="plantag">${esc(planName(f.planId))}</span>`:""}<br><span class="t2">${esc(f.notiz||"Keine Notiz")}</span><span class="t3">${esc(fmtZeit(f.zeit))}</span></span></button></li>`}).join("");
+  ul.querySelectorAll("button").forEach(b=>b.onclick=async()=>{const f=punkte.find(x=>x.id===b.dataset.id);closeSides();if(f){if(f.planId!==plan.id)await showPlan(f.planId);centerOn(f.x,f.y);openDetail(f.id)}});
 }
 
 function renderMenu(){
   const body=$("menuBody");
   if(!projekt){body.innerHTML=`<div class="group"><h4>Übertragen</h4><p>Lege zuerst ein Projekt an oder öffne eine Projektdatei.</p>
-    <div class="stack"><label class="btn primary">Projektdatei öffnen<input type="file" class="importInput" accept=".zip,application/zip"></label></div></div>`;bindImports(body);return}
+    <div class="stack"><label class="btn primary">Projektdatei öffnen<input type="file" class="importInput"></label></div></div>`;bindImports(body);return}
   const unsaved=!projekt.gesichert||projekt.geaendert>projekt.gesichert;
   body.innerHTML=`
     <div class="group"><h4>Zwischen Geräten übertragen</h4>
       <p>${unsaved?"<strong>Es gibt Änderungen, die noch in keiner Projektdatei stecken.</strong> ":""}Zuletzt gespeichert: ${projekt.gesichert?esc(fmtZeit(projekt.gesichert)):"noch nie"}.</p>
       <div class="stack">
         <button class="btn primary" type="button" id="mSave">Projektdatei speichern</button>
-        <label class="btn">Projektdatei öffnen und zusammenführen<input type="file" class="importInput" accept=".zip,application/zip"></label>
+        <label class="btn">Projektdatei öffnen und zusammenführen<input type="file" class="importInput"></label>
       </div>
       <p style="margin-top:8px">Öffnest du eine Projektdatei desselben Projekts, werden beide Stände zusammengeführt. Nichts wird überschrieben, nur neuere Änderungen übernommen.</p>
     </div>
@@ -343,9 +348,18 @@ function renderMenu(){
         <button class="btn" type="button" id="mZip">Fotos + Liste für Excel (ZIP)</button>
       </div>
     </div>
-    <div class="group"><h4>Plan</h4>
-      <p>${esc(projekt.planName||"Kabelplan")} · ${projekt.planW}×${projekt.planH} px. Punkte behalten beim Ersetzen ihre relative Lage.</p>
-      <div class="stack"><button class="btn" type="button" id="mPlan">Plan ersetzen</button></div>
+    <div class="group"><h4>Pläne in diesem Projekt</h4>
+      <p>Ein Projekt kann mehrere Pläne haben, z. B. Abschnitte oder Detailpläne. Die Nummern FP 01, FP 02 … laufen über alle Pläne durch. Umschalten über die Leiste oben.</p>
+      <div class="stack">
+        <button class="btn primary" type="button" id="mPlanAdd">Weiteren Plan hinzufügen</button>
+      </div>
+      <p style="margin-top:12px"><strong>Aktueller Plan:</strong> ${esc(plan.name)} · ${sichtbar().length} Punkte · ${plan.w}×${plan.h} px</p>
+      <label class="lbl" for="mPlanName">Name des Plans</label><input type="text" id="mPlanName" value="${esc(plan.name)}">
+      <div class="stack">
+        <button class="btn" type="button" id="mPlanRename">Plan umbenennen</button>
+        <button class="btn" type="button" id="mPlan">Plan-Datei ersetzen (Punkte bleiben an ihrer relativen Lage)</button>
+        ${projekt.plaene.length>1?`<button class="btn danger" type="button" id="mPlanDel">Diesen Plan löschen</button>`:""}
+      </div>
     </div>
     <div class="group"><h4>Datenschutz</h4>
       <p>Plan, Fotos und Notizen liegen nur in diesem Browser auf diesem Gerät. Die App sendet nichts ins Internet. ${persisted?"Der Speicher ist als dauerhaft markiert.":"Der Browser darf den Speicher bei Platzmangel leeren. Speichere die Projektdatei deshalb regelmäßig."}</p>
@@ -357,6 +371,20 @@ function renderMenu(){
   $("mPdf").onclick=()=>run(exportPdf);
   $("mZip").onclick=()=>run(exportFotoZip);
   $("mPlan").onclick=()=>{$("planInput").click()};
+  $("mPlanAdd").onclick=()=>{$("addPlanInput").click()};
+  $("mPlanRename").onclick=async()=>{const n=$("mPlanName").value.trim();if(!n)return;plan.name=n;plan.geaendert=now();await touchProjekt();renderPlanTabs();renderMenu();toast("Plan umbenannt")};
+  if($("mPlanDel"))$("mPlanDel").onclick=async()=>{
+    const n=sichtbar().length;
+    const ok=await ask("Plan löschen?",`„${plan.name}“${n?` und die ${n} Fotopunkte darauf werden`:" wird"} gelöscht. Das lässt sich nicht rückgängig machen.`,"Löschen");
+    if(!ok)return;
+    const pid=plan.id;const ids=sichtbar().map(p=>p.id);
+    for(const id of ids){await DB.delPunkt(id);const u=fotoUrls.get(id);if(u){URL.revokeObjectURL(u.url);fotoUrls.delete(id)}}
+    punkte=punkte.filter(p=>p.planId!==pid);
+    projekt.geloescht=[...new Set([...(projekt.geloescht||[]),...ids])];
+    projekt.plaeneGeloescht=[...new Set([...(projekt.plaeneGeloescht||[]),pid])];
+    projekt.plaene=projekt.plaene.filter(q=>q.id!==pid);
+    await touchProjekt();closeSides();await showPlan(projekt.plaene[0].id);toast("Plan gelöscht");
+  };
 }
 async function run(fn){try{await fn()}catch(e){console.error(e);toast("Das hat nicht geklappt: "+(e&&e.message||e),5000)}finally{busy(false)}}
 
@@ -369,7 +397,7 @@ async function renderProjects(){
     </div>
     <div class="group"><h4>Neu</h4><div class="stack">
       <button class="btn primary" type="button" id="pNew">Neues Projekt anlegen</button>
-      <label class="btn">Projektdatei öffnen<input type="file" class="importInput" accept=".zip,application/zip"></label>
+      <label class="btn">Projektdatei öffnen<input type="file" class="importInput"></label>
       <button class="btn demoBtn" type="button">Demo-Projekt mit Testplan laden</button>
     </div></div>
     ${projekt?`<div class="group"><h4>Aktuelles Projekt</h4>
@@ -392,56 +420,129 @@ async function renderProjects(){
 function updateHeader(){
   $("projName").textContent=projekt?projekt.name+" · "+punkte.length+" Punkte":"Kein Projekt";
   $("btnList").hidden=!projekt;
+  renderPlanTabs();
+}
+function renderPlanTabs(){
+  const nav=$("planTabs");
+  if(!projekt){nav.hidden=true;nav.innerHTML="";return}
+  nav.hidden=false;
+  nav.innerHTML=projekt.plaene.map(q=>{const n=punkte.filter(p=>p.planId===q.id).length;return `<button type="button" class="ptab${plan&&q.id===plan.id?" on":""}" data-id="${esc(q.id)}" aria-pressed="${plan&&q.id===plan.id}">${esc(q.name)}<span class="pc">${n}</span></button>`}).join("")+
+    `<button type="button" class="ptab add" id="tabAdd" aria-label="Weiteren Plan hinzufügen">+ Plan</button>`;
+  nav.querySelectorAll(".ptab[data-id]").forEach(b=>b.onclick=()=>{if(plan&&b.dataset.id===plan.id)return;showPlan(b.dataset.id)});
+  $("tabAdd").onclick=()=>$("addPlanInput").click();
+  const on=nav.querySelector(".on");if(on&&on.scrollIntoView)try{on.scrollIntoView({block:"nearest",inline:"nearest"})}catch(e){}
+}
+async function showPlan(id){
+  const q=projekt.plaene.find(x=>x.id===id)||projekt.plaene[0];if(!q)return;
+  plan=q;projekt.aktivPlan=q.id;selected=null;pending=null;clearPendingFile();sheet.hidden=true;moving=null;hint("");
+  try{await DB.putProjekt(projekt)}catch(e){}
+  if(planUrl)URL.revokeObjectURL(planUrl);
+  planUrl=URL.createObjectURL(q.blob);planEl.hidden=false;
+  await new Promise(res=>{planEl.onload=res;planEl.onerror=res;planEl.src=planUrl});
+  fit();updateHeader();
+}
+/* ältere Projekte (ein Plan) auf mehrere Pläne umstellen */
+function migrate(p,pts){
+  let changed=false;
+  if(!Array.isArray(p.plaene)){
+    p.plaene=p.plan?[{id:"haupt",name:(p.planName||"Plan 1").replace(/\.[^.]+$/,""),blob:p.plan,w:p.planW,h:p.planH,geaendert:p.planGeaendert||p.erstellt||now()}]:[];
+    delete p.plan;delete p.planW;delete p.planH;delete p.planName;delete p.planGeaendert;changed=true;
+  }
+  if(!p.plaeneGeloescht)p.plaeneGeloescht=[];
+  const fix=[];for(const q of pts)if(!q.planId){q.planId=(p.plaene[0]&&p.plaene[0].id)||"haupt";fix.push(q)}
+  return {changed,fix};
 }
 function showStart(){
-  projekt=null;punkte=[];clearUrls();sheet.hidden=true;pending=null;
+  projekt=null;plan=null;punkte=[];clearUrls();sheet.hidden=true;pending=null;
   planEl.hidden=true;$("zoomCtl").hidden=true;pinsEl.innerHTML="";$("empty").hidden=false;updateHeader();
 }
 async function openProject(id){
   const p=await DB.projekt(id);if(!p){showStart();return}
   clearUrls();projekt=p;punkte=await DB.punkte(id);selected=null;pending=null;sheet.hidden=true;moving=null;hint("");
+  const m=migrate(projekt,punkte);
+  if(m.changed)await DB.putProjekt(projekt);
+  if(m.fix.length)await DB.putPunkte(m.fix);
   LS.set("kfd:last",id);
   $("empty").hidden=true;$("zoomCtl").hidden=false;
-  planUrl=URL.createObjectURL(p.plan);
-  planEl.hidden=false;
-  await new Promise(res=>{planEl.onload=res;planEl.onerror=res;planEl.src=planUrl});
-  fit();updateHeader();
+  await showPlan(projekt.aktivPlan||projekt.plaene[0].id);
 }
-async function planFromFile(file){
-  if(file.type==="application/pdf"||/\.pdf$/i.test(file.name)){busy(true,"PDF wird umgewandelt…");return await pdfToJpeg(file)}
-  busy(true,"Plan wird vorbereitet…");
-  return await toJpeg(file,7000,0.9);
-}
-async function pdfToJpeg(file){
-  if(!window.pdfjsLib)await loadScript("lib/pdf.min.js");
+/* Liefert eine Liste von Plänen [{blob,w,h,name}]. Bei mehrseitigen PDFs wird gefragt, ob alle Seiten übernommen werden. */
+async function plaeneAusDatei(file,erlaubeMehrere){
+  const base=file.name.replace(/\.[^.]+$/,"")||"Plan";
+  const istPdf=file.type==="application/pdf"||/\.pdf$/i.test(file.name);
+  if(!istPdf){
+    if(file.type&&!file.type.startsWith("image/"))throw new Error("Bitte ein PDF oder ein Bild (JPG, PNG) wählen.");
+    busy(true,"Plan wird vorbereitet…");
+    const blob=await toJpeg(file,7000,0.9);const s=await imgSize(blob);
+    return [{blob,w:s.w,h:s.h,name:base}];
+  }
+  busy(true,"PDF wird geöffnet…");
+  try{if(!window.pdfjsLib)await loadScript("lib/pdf.min.js")}catch(e){throw new Error("PDF-Werkzeug konnte nicht geladen werden. Einmal mit Internet öffnen, dann geht es auch offline.")}
   window.pdfjsLib.GlobalWorkerOptions.workerSrc="lib/pdf.worker.min.js";
-  const pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}).promise;
-  const page=await pdf.getPage(1);
+  let pdf;
+  try{pdf=await window.pdfjsLib.getDocument({data:new Uint8Array(await file.arrayBuffer()),isEvalSupported:false}).promise}
+  catch(e){
+    if(e&&e.name==="PasswordException")throw new Error("Das PDF ist mit einem Passwort geschützt. Bitte eine ungeschützte Fassung verwenden.");
+    throw new Error("Das PDF lässt sich nicht lesen ("+(e&&e.message||e)+"). Tipp: Plan als PNG oder JPG exportieren und das Bild laden.");
+  }
+  let seiten=[1];
+  if(pdf.numPages>1&&erlaubeMehrere){
+    busy(false);
+    const alle=await ask("PDF mit "+pdf.numPages+" Seiten",`Jede Seite als eigenen Plan übernehmen? Bei „Nur Seite 1“ wird nur die erste Seite geladen.`,"Alle "+pdf.numPages+" Seiten","Nur Seite 1");
+    seiten=alle?Array.from({length:pdf.numPages},(_,i)=>i+1):[1];
+  }
+  const out=[];
+  for(const n of seiten){
+    busy(true,seiten.length>1?`PDF wird umgewandelt: Seite ${n} von ${seiten.length}…`:"PDF wird umgewandelt…");
+    const blob=await pdfSeite(pdf,n);const s=await imgSize(blob);
+    out.push({blob,w:s.w,h:s.h,name:seiten.length>1?base+" S. "+n:base});
+  }
+  try{pdf.destroy()}catch(e){}
+  return out;
+}
+const istIOS=()=>/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+async function pdfSeite(pdf,n){
+  const page=await pdf.getPage(n);
   const v1=page.getViewport({scale:1});
-  const scale=Math.min(7000/Math.max(v1.width,v1.height),Math.sqrt(15.5e6/(v1.width*v1.height)),10);
+  const maxPx=istIOS()?12e6:15.5e6;
+  const scale=Math.min(7000/Math.max(v1.width,v1.height),Math.sqrt(maxPx/(v1.width*v1.height)),10);
   const vp=page.getViewport({scale});
   const c=document.createElement("canvas");c.width=Math.floor(vp.width);c.height=Math.floor(vp.height);
-  const g=c.getContext("2d");g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);
+  const g=c.getContext("2d");if(!g)throw new Error("Der Plan ist zu groß für dieses Gerät.");
+  g.fillStyle="#fff";g.fillRect(0,0,c.width,c.height);
   await page.render({canvasContext:g,viewport:vp}).promise;
-  return await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("PDF zu groß für dieses Gerät")),"image/jpeg",0.9));
+  const blob=await new Promise((res,rej)=>c.toBlob(b=>b?res(b):rej(new Error("Der Plan ist zu groß für dieses Gerät.")),"image/jpeg",0.9));
+  c.width=c.height=1;page.cleanup();
+  return blob;
 }
 $("newPlan").addEventListener("change",async e=>{
   const file=e.target.files&&e.target.files[0];e.target.value="";if(!file)return;
   const name=$("newName").value.trim()||file.name.replace(/\.[^.]+$/,"");
   try{
-    const blob=await planFromFile(file);const s=await imgSize(blob);const t=now();
-    const p={id:uid(),name,plan:blob,planW:s.w,planH:s.h,planName:file.name,planGeaendert:t,erstellt:t,geaendert:t,gesichert:null,geloescht:[]};
-    await DB.putProjekt(p);$("newName").value="";await openProject(p.id);toast("Projekt angelegt. Jetzt Stelle antippen.");
-  }catch(err){console.error(err);toast("Plan konnte nicht gelesen werden: "+(err.message||err),5000)}
+    const liste=await plaeneAusDatei(file,true);const t=now();
+    const plaene=liste.map(x=>({id:uid(),name:x.name,blob:x.blob,w:x.w,h:x.h,geaendert:t}));
+    const p={id:uid(),name,plaene,aktivPlan:plaene[0].id,erstellt:t,geaendert:t,gesichert:null,geloescht:[],plaeneGeloescht:[]};
+    await DB.putProjekt(p);$("newName").value="";await openProject(p.id);toast(plaene.length>1?`Projekt mit ${plaene.length} Plänen angelegt.`:"Projekt angelegt. Jetzt Stelle antippen.");
+  }catch(err){console.error(err);toast("Plan konnte nicht geladen werden: "+(err.message||err),7000)}
   finally{busy(false)}
 });
 $("planInput").addEventListener("change",async e=>{
   const file=e.target.files&&e.target.files[0];e.target.value="";if(!file||!projekt)return;
   try{
-    const blob=await planFromFile(file);const s=await imgSize(blob);
-    projekt.plan=blob;projekt.planW=s.w;projekt.planH=s.h;projekt.planName=file.name;projekt.planGeaendert=now();
-    await touchProjekt();closeSides();await openProject(projekt.id);toast("Plan ersetzt");
-  }catch(err){toast("Plan konnte nicht gelesen werden: "+(err.message||err),5000)}
+    const [x]=await plaeneAusDatei(file,false);
+    plan.blob=x.blob;plan.w=x.w;plan.h=x.h;plan.geaendert=now();
+    await touchProjekt();closeSides();await showPlan(plan.id);toast("Plan-Datei ersetzt");
+  }catch(err){toast("Plan konnte nicht geladen werden: "+(err.message||err),7000)}
+  finally{busy(false)}
+});
+$("addPlanInput").addEventListener("change",async e=>{
+  const file=e.target.files&&e.target.files[0];e.target.value="";if(!file||!projekt)return;
+  try{
+    const liste=await plaeneAusDatei(file,true);const t=now();
+    const neu=liste.map(x=>({id:uid(),name:x.name,blob:x.blob,w:x.w,h:x.h,geaendert:t}));
+    projekt.plaene.push(...neu);await touchProjekt();closeSides();await showPlan(neu[0].id);
+    toast(neu.length>1?`${neu.length} Pläne hinzugefügt`:"Plan „"+neu[0].name+"“ hinzugefügt");
+  }catch(err){toast("Plan konnte nicht geladen werden: "+(err.message||err),7000)}
   finally{busy(false)}
 });
 
@@ -449,11 +550,12 @@ $("planInput").addEventListener("change",async e=>{
 async function saveProjectFile(){
   busy(true,"Projektdatei wird erstellt…");
   const zip=new JSZip();
-  const meta={format:FORMAT,version:1,app:APP_VERSION,gespeichert:now(),
-    projekt:{id:projekt.id,name:projekt.name,planName:projekt.planName,planW:projekt.planW,planH:projekt.planH,planGeaendert:projekt.planGeaendert,erstellt:projekt.erstellt,geaendert:projekt.geaendert,geloescht:projekt.geloescht||[]},
-    punkte:punkte.map(p=>({id:p.id,nr:p.nr,x:p.x,y:p.y,notiz:p.notiz||"",zeit:p.zeit,geaendert:p.geaendert,foto:p.foto?"fotos/"+p.id+".jpg":null}))};
+  const meta={format:FORMAT,version:2,app:APP_VERSION,gespeichert:now(),
+    projekt:{id:projekt.id,name:projekt.name,erstellt:projekt.erstellt,geaendert:projekt.geaendert,geloescht:projekt.geloescht||[],plaeneGeloescht:projekt.plaeneGeloescht||[],
+      plaene:projekt.plaene.map(q=>({id:q.id,name:q.name,w:q.w,h:q.h,geaendert:q.geaendert,datei:"plaene/"+q.id+".jpg"}))},
+    punkte:punkte.map(p=>({id:p.id,planId:p.planId,nr:p.nr,x:p.x,y:p.y,notiz:p.notiz||"",zeit:p.zeit,geaendert:p.geaendert,foto:p.foto?"fotos/"+p.id+".jpg":null}))};
   zip.file("projekt.json",JSON.stringify(meta,null,1));
-  zip.file("plan.jpg",projekt.plan);
+  for(const q of projekt.plaene)zip.file("plaene/"+q.id+".jpg",q.blob);
   for(const p of punkte)if(p.foto)zip.file("fotos/"+p.id+".jpg",p.foto);
   zip.file("LIESMICH.txt","Projektdatei der Kabel-Fotodoku.\nNicht entpacken, sondern in der App über „Projektdatei öffnen“ laden.\n");
   const blob=await zip.generateAsync({type:"blob",compression:"STORE",mimeType:"application/zip"});
@@ -497,43 +599,67 @@ function mergePunkte(local,incoming,geloescht){
 }
 async function importProjectFile(file){
   busy(true,"Projektdatei wird gelesen…");
-  let zip;try{zip=await JSZip.loadAsync(file)}catch(e){throw new Error("Das ist keine gültige Projektdatei (ZIP).")}
+  let zip;try{zip=await JSZip.loadAsync(file)}catch(e){throw new Error("Das ist keine gültige Projektdatei (ZIP). Bitte die Datei wählen, die mit „Projektdatei speichern“ erstellt wurde.")}
   const mf=zip.file("projekt.json");if(!mf)throw new Error("In der Datei fehlt projekt.json. Ist es eine Projektdatei der Kabel-Fotodoku?");
   let meta;try{meta=JSON.parse(await mf.async("string"))}catch(e){throw new Error("projekt.json ist beschädigt.")}
   if(!meta||meta.format!==FORMAT||!meta.projekt||!meta.projekt.id)throw new Error("Unbekanntes Dateiformat.");
   const mp=meta.projekt;
-  const planF=zip.file("plan.jpg");if(!planF)throw new Error("In der Datei fehlt der Plan.");
+  // Pläne lesen (Version 1: eine plan.jpg, Version 2: mehrere)
+  let planListe=Array.isArray(mp.plaene)?mp.plaene:[{id:"haupt",name:(mp.planName||"Plan 1").replace(/\.[^.]+$/,""),w:mp.planW,h:mp.planH,geaendert:mp.planGeaendert||mp.erstellt,datei:"plan.jpg"}];
+  const inPlaene=[];
+  for(const q of planListe){
+    const f=zip.file(q.datei||("plaene/"+q.id+".jpg"));if(!f)continue;
+    inPlaene.push({id:String(q.id),name:String(q.name||"Plan"),w:Number(q.w),h:Number(q.h),geaendert:q.geaendert||now(),_f:f});
+  }
+  if(!inPlaene.length)throw new Error("In der Datei fehlt der Plan.");
+  const defPlan=inPlaene[0].id;
   const incoming=[];
   for(const q of (meta.punkte||[])){
     if(typeof q.x!=="number"||typeof q.y!=="number"||!q.id)continue;
     let foto=null;
     if(q.foto){const ff=zip.file(q.foto);if(ff)foto=new Blob([await ff.async("arraybuffer")],{type:"image/jpeg"})}
-    incoming.push({id:String(q.id),projektId:mp.id,nr:Number(q.nr)||0,x:Math.min(1,Math.max(0,q.x)),y:Math.min(1,Math.max(0,q.y)),notiz:String(q.notiz||""),zeit:q.zeit||now(),geaendert:q.geaendert||q.zeit||now(),foto});
+    incoming.push({id:String(q.id),projektId:mp.id,planId:String(q.planId||defPlan),nr:Number(q.nr)||0,x:Math.min(1,Math.max(0,q.x)),y:Math.min(1,Math.max(0,q.y)),notiz:String(q.notiz||""),zeit:q.zeit||now(),geaendert:q.geaendert||q.zeit||now(),foto});
   }
+  const blobOf=async q=>new Blob([await q._f.async("arraybuffer")],{type:"image/jpeg"});
   const existing=await DB.projekt(mp.id);
   if(!existing){
-    const plan=new Blob([await planF.async("arraybuffer")],{type:"image/jpeg"});
-    const p={id:mp.id,name:mp.name||"Projekt",plan,planW:mp.planW,planH:mp.planH,planName:mp.planName||"plan.jpg",planGeaendert:mp.planGeaendert||mp.erstellt||now(),
-      erstellt:mp.erstellt||now(),geaendert:mp.geaendert||now(),gesichert:meta.gespeichert||now(),geloescht:mp.geloescht||[]};
-    const m=mergePunkte([],incoming,p.geloescht);
+    const plaene=[];for(const q of inPlaene)plaene.push({id:q.id,name:q.name,w:q.w,h:q.h,geaendert:q.geaendert,blob:await blobOf(q)});
+    const p={id:mp.id,name:mp.name||"Projekt",plaene,aktivPlan:plaene[0].id,erstellt:mp.erstellt||now(),geaendert:mp.geaendert||now(),gesichert:meta.gespeichert||now(),
+      geloescht:mp.geloescht||[],plaeneGeloescht:mp.plaeneGeloescht||[]};
+    const ids=new Set(plaene.map(q=>q.id));
+    const m=mergePunkte([],incoming.filter(x=>ids.has(x.planId)),p.geloescht);
     await DB.putProjekt(p);await DB.putPunkte(m.list);
     await openProject(p.id);closeSides();
-    toast(`„${p.name}“ geöffnet: ${m.list.length} Fotopunkte`,4000);return;
+    toast(`„${p.name}“ geöffnet: ${plaene.length>1?plaene.length+" Pläne, ":""}${m.list.length} Fotopunkte`,4000);return;
   }
   busy(true,"Stände werden zusammengeführt…");
   const local=await DB.punkte(mp.id);
-  const geloescht=[...new Set([...(existing.geloescht||[]),...(mp.geloescht||[])])];
-  const m=mergePunkte(local,incoming,geloescht);
-  let planNeu=false;
-  if((mp.planGeaendert||"")>(existing.planGeaendert||"")){
-    existing.plan=new Blob([await planF.async("arraybuffer")],{type:"image/jpeg"});existing.planW=mp.planW;existing.planH=mp.planH;existing.planName=mp.planName;existing.planGeaendert=mp.planGeaendert;planNeu=true;
+  migrate(existing,local);
+  const plGel=new Set([...(existing.plaeneGeloescht||[]),...(mp.plaeneGeloescht||[])]);
+  // Pläne zusammenführen
+  let planNeu=0,planAkt=0;
+  const pmap=new Map(existing.plaene.map(q=>[q.id,q]));
+  for(const q of inPlaene){
+    if(plGel.has(q.id))continue;
+    const l=pmap.get(q.id);
+    if(!l){pmap.set(q.id,{id:q.id,name:q.name,w:q.w,h:q.h,geaendert:q.geaendert,blob:await blobOf(q)});planNeu++}
+    else if((q.geaendert||"")>(l.geaendert||"")){l.name=q.name;l.w=q.w;l.h=q.h;l.geaendert=q.geaendert;l.blob=await blobOf(q);planAkt++}
   }
+  for(const id of plGel)pmap.delete(id);
+  if(!pmap.size)throw new Error("Nach dem Zusammenführen bleibt kein Plan übrig.");
+  existing.plaene=[...pmap.values()];existing.plaeneGeloescht=[...plGel];
+  const ids=new Set(existing.plaene.map(q=>q.id));
+  const orphan=[...local,...incoming].filter(x=>!ids.has(x.planId)).map(x=>x.id);
+  const geloescht=[...new Set([...(existing.geloescht||[]),...(mp.geloescht||[]),...orphan])];
+  const m=mergePunkte(local,incoming,geloescht);
   if((mp.geaendert||"")>(existing.geaendert||"")&&mp.name)existing.name=mp.name;
   existing.geloescht=geloescht;existing.geaendert=now();
+  if(!ids.has(existing.aktivPlan))existing.aktivPlan=existing.plaene[0].id;
   const toDelete=local.filter(p=>geloescht.includes(p.id)).map(p=>p.id);
   await tx(["punkte","projekte"],"readwrite",t=>{const s=t.objectStore("punkte");toDelete.forEach(i=>s.delete(i));m.list.forEach(p=>s.put(p));t.objectStore("projekte").put(existing)});
   await openProject(existing.id);closeSides();
-  const parts=[];if(m.neu)parts.push(m.neu+" neu");if(m.akt)parts.push(m.akt+" aktualisiert");if(m.removed)parts.push(m.removed+" gelöscht");if(m.renum)parts.push(m.renum+" neu nummeriert");if(planNeu)parts.push("Plan aktualisiert");
+  const parts=[];if(m.neu)parts.push(m.neu+" neu");if(m.akt)parts.push(m.akt+" aktualisiert");if(m.removed)parts.push(m.removed+" gelöscht");if(m.renum)parts.push(m.renum+" neu nummeriert");
+  if(planNeu)parts.push(planNeu+(planNeu>1?" Pläne":" Plan")+" neu");if(planAkt)parts.push(planAkt+(planAkt>1?" Pläne":" Plan")+" aktualisiert");
   toast("Zusammengeführt: "+(parts.length?parts.join(", "):"keine Änderungen"),5000);
 }
 
@@ -566,31 +692,37 @@ const sorted=()=>[...punkte].sort((a,b)=>a.nr-b.nr);
 async function exportHtml(){
   busy(true,"Planer-Ansicht wird erstellt…");
   if(!window.KFD_VIEWER)await loadScript("viewer-template.js");
-  const planBlob=projekt.planW*projekt.planH>36e6?await toJpeg(projekt.plan,6000,0.85):projekt.plan;
+  const plaene=[];const idx=new Map();
+  for(const q of projekt.plaene){
+    busy(true,`Planer-Ansicht: Plan ${plaene.length+1} von ${projekt.plaene.length}…`);
+    const b=q.w*q.h>36e6?await toJpeg(q.blob,6000,0.85):q.blob;
+    const s=b===q.blob?{w:q.w,h:q.h}:await imgSize(b);
+    idx.set(q.id,plaene.length);plaene.push({name:q.name,src:await blobToDataURL(b),w:s.w,h:s.h});
+  }
   const ps=[];
   for(const p of sorted()){busy(true,`Planer-Ansicht: Foto ${ps.length+1} von ${punkte.length}…`);
-    ps.push({nr:p.nr,x:p.x,y:p.y,notiz:p.notiz||"",zeit:p.zeit,foto:p.foto?await blobToDataURL(await toJpeg(p.foto,1600,0.8)):null})}
-  const s=planBlob===projekt.plan?{w:projekt.planW,h:projekt.planH}:await imgSize(planBlob);
-  const data={projekt:projekt.name,planName:projekt.planName,exportiert:now(),plan:{src:await blobToDataURL(planBlob),w:s.w,h:s.h},punkte:ps};
+    ps.push({nr:p.nr,p:idx.get(p.planId)??0,x:p.x,y:p.y,notiz:p.notiz||"",zeit:p.zeit,foto:p.foto?await blobToDataURL(await toJpeg(p.foto,1600,0.8)):null})}
+  const data={projekt:projekt.name,exportiert:now(),plaene,punkte:ps};
   const json=JSON.stringify(data).replace(/</g,"\\u003c");
   const html=window.KFD_VIEWER.replace("/*__TITEL__*/",()=>esc(projekt.name)).replace("/*__DATA__*/null",()=>json);
   const file=new File([html],"Kabeldoku_Planeransicht_"+fileSafe(projekt.name)+"_"+stamp()+".html",{type:"text/html"});
-  offerFile(file,"Planer-Ansicht bereit","Eine einzelne Datei mit Plan und allen Fotos. Planer öffnen sie am PC per Doppelklick im Browser, ohne Installation und ohne Internet.");
+  offerFile(file,"Planer-Ansicht bereit","Eine einzelne Datei mit allen Plänen und Fotos. Planer öffnen sie am PC per Doppelklick im Browser, ohne Installation und ohne Internet.");
 }
 
 async function exportFotoZip(){
   busy(true,"Fotos werden gepackt…");
-  const zip=new JSZip();const rows=[["Nr","Notiz","Datum","Uhrzeit","Lage x (0-1)","Lage y (0-1)","Fotodatei"]];
+  const zip=new JSZip();const rows=[["Nr","Plan","Notiz","Datum","Uhrzeit","Lage x (0-1)","Lage y (0-1)","Fotodatei"]];
   for(const p of sorted()){
     const name=p.foto?"FP"+pad2(p.nr)+(p.notiz?"_"+fileSafe(p.notiz).slice(0,40):"")+".jpg":"";
     if(p.foto)zip.file("Fotos/"+name,p.foto);
-    rows.push([fmtNr(p.nr),p.notiz||"",fmtDatum(p.zeit),fmtUhr(p.zeit),String(p.x).replace(".",","),String(p.y).replace(".",","),name]);
+    rows.push([fmtNr(p.nr),planName(p.planId),p.notiz||"",fmtDatum(p.zeit),fmtUhr(p.zeit),String(p.x).replace(".",","),String(p.y).replace(".",","),name]);
   }
   const csv="﻿"+rows.map(r=>r.map(c=>{c=String(c);return /[;"\n\r]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c}).join(";")).join("\r\n");
   zip.file("Fotopunkte.csv",csv);
-  zip.file("Plan_"+fileSafe(projekt.planName||"Kabelplan").replace(/\.(pdf|png|jpe?g)$/i,"")+".jpg",projekt.plan);
+  const used=new Set();
+  for(const q of projekt.plaene){let n="Plan_"+fileSafe(q.name);while(used.has(n))n+="_2";used.add(n);zip.file("Plaene/"+n+".jpg",q.blob)}
   const blob=await zip.generateAsync({type:"blob",compression:"STORE",mimeType:"application/zip"});
-  offerFile(new File([blob],"Kabeldoku_Fotos_"+fileSafe(projekt.name)+"_"+stamp()+".zip",{type:"application/zip"}),"Fotos + Liste bereit","Ordner mit allen Fotos (benannt nach Fotopunkt), dem Plan und Fotopunkte.csv, die sich direkt in Excel öffnen lässt.");
+  offerFile(new File([blob],"Kabeldoku_Fotos_"+fileSafe(projekt.name)+"_"+stamp()+".zip",{type:"application/zip"}),"Fotos + Liste bereit","Ordner mit allen Fotos (benannt nach Fotopunkt), den Plänen und Fotopunkte.csv, die sich direkt in Excel öffnen lässt.");
 }
 
 async function exportPdf(){
@@ -600,59 +732,68 @@ async function exportPdf(){
   const doc=new jsPDF({orientation:"landscape",unit:"mm",format:"a4",compress:true});
   const W=297,H=210,M=12;
   const orange=[217,83,26],ink=[30,35,40],grey=[93,101,109];
-  const planBmp=await bitmapOf(projekt.plan);
-  const PW=planBmp.width,PH=planBmp.height;
-  const list=sorted();
-  // Übersicht
-  const ov=document.createElement("canvas");const k=Math.min(1,3600/Math.max(PW,PH));ov.width=Math.round(PW*k);ov.height=Math.round(PH*k);
-  const og=ov.getContext("2d");og.fillStyle="#fff";og.fillRect(0,0,ov.width,ov.height);og.drawImage(planBmp,0,0,ov.width,ov.height);
-  const r0=Math.max(ov.width,ov.height)/75;
-  for(const p of list)drawMarker(og,p.x*ov.width,p.y*ov.height,r0,p.nr);
-  header(doc,1);
-  doc.setFontSize(18);doc.setTextColor(...ink);doc.setFont("helvetica","bold");doc.text("Kabel-Fotodoku: "+projekt.name,M,M+8);
-  doc.setFontSize(9.5);doc.setFont("helvetica","normal");doc.setTextColor(...grey);
-  doc.text(`Plan: ${projekt.planName||"Kabelplan"}  ·  ${list.length} Fotopunkte  ·  erstellt ${fmtZeit(now())}`,M,M+14);
-  const box={x:M,y:M+19,w:W-2*M,h:H-M-19-10};
-  const fk=Math.min(box.w/ov.width,box.h/ov.height);const iw=ov.width*fk,ih=ov.height*fk;
-  doc.addImage(ov.toDataURL("image/jpeg",0.85),"JPEG",box.x+(box.w-iw)/2,box.y+(box.h-ih)/2,iw,ih);
-  doc.setDrawColor(205,209,211);doc.rect(box.x+(box.w-iw)/2,box.y+(box.h-ih)/2,iw,ih);
+  const list=sorted();const mehr=projekt.plaene.length>1;
+  let page=0;
+  function header(d,n){d.setFontSize(8);d.setTextColor(...grey);d.setFont("helvetica","normal");d.text(projekt.name+"  ·  Kabel-Fotodoku",M,H-6);d.text("Seite "+n,W-M,H-6,{align:"right"})}
+  // Übersicht je Plan
+  for(const q of projekt.plaene){
+    busy(true,`PDF: Übersicht ${q.name}…`);
+    if(page>0)doc.addPage("a4","landscape");page++;header(doc,page);
+    const bmp=await bitmapOf(q.blob);
+    const ov=document.createElement("canvas");const k=Math.min(1,3600/Math.max(bmp.width,bmp.height));ov.width=Math.round(bmp.width*k);ov.height=Math.round(bmp.height*k);
+    const og=ov.getContext("2d");og.fillStyle="#fff";og.fillRect(0,0,ov.width,ov.height);og.drawImage(bmp,0,0,ov.width,ov.height);
+    if(bmp.close)try{bmp.close()}catch(e){}
+    const auf=list.filter(p=>p.planId===q.id);
+    const r0=Math.max(ov.width,ov.height)/75;
+    for(const p of auf)drawMarker(og,p.x*ov.width,p.y*ov.height,r0,p.nr);
+    doc.setFontSize(18);doc.setTextColor(...ink);doc.setFont("helvetica","bold");doc.text("Kabel-Fotodoku: "+projekt.name,M,M+8);
+    doc.setFontSize(9.5);doc.setFont("helvetica","normal");doc.setTextColor(...grey);
+    doc.text(`Plan: ${q.name}  ·  ${auf.length} Fotopunkte${mehr?`  ·  Plan ${projekt.plaene.indexOf(q)+1} von ${projekt.plaene.length}`:""}  ·  erstellt ${fmtZeit(now())}`,M,M+14);
+    const box={x:M,y:M+19,w:W-2*M,h:H-M-19-10};
+    const fk=Math.min(box.w/ov.width,box.h/ov.height);const iw=ov.width*fk,ih=ov.height*fk;
+    doc.addImage(ov.toDataURL("image/jpeg",0.85),"JPEG",box.x+(box.w-iw)/2,box.y+(box.h-ih)/2,iw,ih);
+    doc.setDrawColor(205,209,211);doc.rect(box.x+(box.w-iw)/2,box.y+(box.h-ih)/2,iw,ih);
+  }
   // Eine Seite je Punkt
-  let page=1;
+  const bmps=new Map();
+  const bmpFor=async id=>{if(!bmps.has(id)){const q=projekt.plaene.find(x=>x.id===id);bmps.set(id,q?await bitmapOf(q.blob):null)}return bmps.get(id)};
+  let i=0;
   for(const p of list){
-    busy(true,`PDF: Fotopunkt ${page} von ${list.length}…`);
+    i++;busy(true,`PDF: Fotopunkt ${i} von ${list.length}…`);
     doc.addPage("a4","landscape");page++;header(doc,page);
     const colX=M+178;
-    // Foto links
     if(p.foto){
       const fb=await bitmapOf(await toJpeg(p.foto,1800,0.82));
       const c=document.createElement("canvas");c.width=fb.width;c.height=fb.height;c.getContext("2d").drawImage(fb,0,0);
       const fw=170,fh=H-2*M-10;const kk=Math.min(fw/c.width,fh/c.height);
       doc.addImage(c.toDataURL("image/jpeg",0.82),"JPEG",M,M,c.width*kk,c.height*kk);
     }else{doc.setDrawColor(205,209,211);doc.setLineDashPattern([2,2],0);doc.rect(M,M,170,100);doc.setLineDashPattern([],0);doc.setTextColor(...grey);doc.setFontSize(11);doc.text("Kein Foto",M+85,M+52,{align:"center"})}
-    // Text rechts
     doc.setTextColor(...orange);doc.setFont("helvetica","bold");doc.setFontSize(26);doc.text(fmtNr(p.nr),colX,M+10);
     doc.setTextColor(...grey);doc.setFont("helvetica","normal");doc.setFontSize(9.5);
     doc.text("Aufgenommen: "+fmtZeit(p.zeit),colX,M+17);
-    doc.text(`Lage im Plan: x ${Number(p.x).toFixed(3)} · y ${Number(p.y).toFixed(3)}`,colX,M+22);
+    doc.text("Plan: "+planName(p.planId),colX,M+22);
+    doc.text(`Lage im Plan: x ${Number(p.x).toFixed(3)} · y ${Number(p.y).toFixed(3)}`,colX,M+27);
     doc.setTextColor(...ink);doc.setFontSize(11.5);
     const lines=doc.splitTextToSize(p.notiz||"Keine Notiz",W-M-colX);
-    doc.text(lines.slice(0,14),colX,M+31);
-    // Planausschnitt
-    const cw=W-M-colX,ch=78;const aspect=cw/ch;
-    let sw=Math.max(PW,PH)*0.22,sh=sw/aspect;if(sw>PW){sw=PW;sh=sw/aspect}if(sh>PH){sh=PH;sw=sh*aspect}
-    let sx=p.x*PW-sw/2,sy=p.y*PH-sh/2;sx=Math.max(0,Math.min(PW-sw,sx));sy=Math.max(0,Math.min(PH-sh,sy));
-    const cc=document.createElement("canvas");cc.width=1100;cc.height=Math.round(1100/aspect);
-    const cg=cc.getContext("2d");cg.fillStyle="#fff";cg.fillRect(0,0,cc.width,cc.height);
-    cg.drawImage(planBmp,sx,sy,sw,sh,0,0,cc.width,cc.height);
-    drawMarker(cg,(p.x*PW-sx)/sw*cc.width,(p.y*PH-sy)/sh*cc.height,26,p.nr);
-    const cy=H-M-10-ch;
-    doc.setTextColor(...grey);doc.setFontSize(8.5);doc.text("Ausschnitt Kabelplan",colX,cy-2);
-    doc.addImage(cc.toDataURL("image/jpeg",0.85),"JPEG",colX,cy,cw,ch);doc.setDrawColor(205,209,211);doc.rect(colX,cy,cw,ch);
+    doc.text(lines.slice(0,13),colX,M+36);
+    const bmp=await bmpFor(p.planId);
+    if(bmp){
+      const PW=bmp.width,PH=bmp.height;
+      const cw=W-M-colX,ch=78;const aspect=cw/ch;
+      let sw=Math.max(PW,PH)*0.22,sh=sw/aspect;if(sw>PW){sw=PW;sh=sw/aspect}if(sh>PH){sh=PH;sw=sh*aspect}
+      let sx=p.x*PW-sw/2,sy=p.y*PH-sh/2;sx=Math.max(0,Math.min(PW-sw,sx));sy=Math.max(0,Math.min(PH-sh,sy));
+      const cc=document.createElement("canvas");cc.width=1100;cc.height=Math.round(1100/aspect);
+      const cg=cc.getContext("2d");cg.fillStyle="#fff";cg.fillRect(0,0,cc.width,cc.height);
+      cg.drawImage(bmp,sx,sy,sw,sh,0,0,cc.width,cc.height);
+      drawMarker(cg,(p.x*PW-sx)/sw*cc.width,(p.y*PH-sy)/sh*cc.height,26,p.nr);
+      const cy=H-M-10-ch;
+      doc.setTextColor(...grey);doc.setFontSize(8.5);doc.text("Ausschnitt "+planName(p.planId),colX,cy-2);
+      doc.addImage(cc.toDataURL("image/jpeg",0.85),"JPEG",colX,cy,cw,ch);doc.setDrawColor(205,209,211);doc.rect(colX,cy,cw,ch);
+    }
   }
-  if(planBmp.close)try{planBmp.close()}catch(e){}
-  function header(d,n){d.setFontSize(8);d.setTextColor(...grey);d.setFont("helvetica","normal");d.text(projekt.name+"  ·  Kabel-Fotodoku",M,H-6);d.text("Seite "+n,W-M,H-6,{align:"right"})}
+  bmps.forEach(b=>{if(b&&b.close)try{b.close()}catch(e){}});
   const blob=doc.output("blob");
-  offerFile(new File([blob],"Kabeldoku_Bericht_"+fileSafe(projekt.name)+"_"+stamp()+".pdf",{type:"application/pdf"}),"PDF-Bericht bereit","Seite 1: Plan mit allen Punkten. Danach je Fotopunkt eine Seite mit Foto, Notiz und Planausschnitt.");
+  offerFile(new File([blob],"Kabeldoku_Bericht_"+fileSafe(projekt.name)+"_"+stamp()+".pdf",{type:"application/pdf"}),"PDF-Bericht bereit",(mehr?"Je Plan eine Übersichtsseite mit allen Punkten. ":"Seite 1: Plan mit allen Punkten. ")+"Danach je Fotopunkt eine Seite mit Foto, Notiz und Planausschnitt.");
 }
 function drawMarker(g,x,y,r,nr){
   g.save();g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.fillStyle="#D9531A";g.fill();g.lineWidth=Math.max(1.5,r/5);g.strokeStyle="#fff";g.stroke();
@@ -683,5 +824,7 @@ async function boot(){
 window.addEventListener("beforeunload",e=>{if(pending&&pendingFile){e.preventDefault();e.returnValue=""}});
 if("serviceWorker" in navigator&&(location.protocol==="https:"||location.hostname==="localhost")){navigator.serviceWorker.register("sw.js").catch(()=>{})}
 window.__kfd={mergePunkte};
+window.addEventListener("error",e=>{try{busy(false);toast("Fehler: "+(e.message||"unbekannt"),6000)}catch(x){}});
+window.addEventListener("unhandledrejection",e=>{try{busy(false);toast("Fehler: "+((e.reason&&e.reason.message)||e.reason||"unbekannt"),6000)}catch(x){}});
 boot();
 })();

@@ -134,3 +134,12 @@ label.lbl{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var
 .toast{position:absolute;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--panel);padding:9px 14px;border-radius:8px;font-size:14px;z-index:16;max-width:calc(100% - 32px)}
 .busy{position:fixed;inset:0;background:rgba(10,12,14,.35);display:grid;place-items:center;z-index:18}
 .busy span{background:var(--panel);padding:14px 18px;border-radius:10px;font-weight:500;box-shadow:var(--shadow)}
+
+/* Planleiste */
+.plantabs{display:flex;gap:6px;overflow-x:auto;background:var(--panel);border-bottom:1px solid var(--line);padding-block:6px;padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));scrollbar-width:thin;position:relative;z-index:5}
+.ptab{flex:none;display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border-radius:18px;border:1px solid var(--line);background:var(--bg);font-size:13.5px;font-weight:500;white-space:nowrap;max-width:240px;overflow:hidden;text-overflow:ellipsis}
+.ptab .pc{font-family:var(--f-mono);font-size:11.5px;color:var(--muted)}
+.ptab.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.ptab.on .pc{color:var(--panel);opacity:.75}
+.ptab.add{background:transparent;border-style:dashed;color:var(--accent);border-color:var(--accent)}
+.plantag{font-family:var(--f-body);font-size:11.5px;font-weight:600;color:var(--accent);background:var(--bg);border-radius:4px;padding:1px 6px;margin-left:4px;vertical-align:2px}

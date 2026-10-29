@@ -36,6 +36,7 @@
     </div>
   </header>
 
+  <nav class="plantabs" id="planTabs" aria-label="Pläne" hidden></nav>
   <main class="stage" id="stage">
     <img class="plan" id="plan" alt="Kabelplan" hidden>
     <div class="pins" id="pins"></div>
@@ -51,7 +52,7 @@
         <h2>Fotopunkte auf dem Kabelplan</h2>
         <p>Alles bleibt auf diesem Gerät. Übertragen wird nur, was du selbst als Projektdatei speicherst und weitergibst.</p>
         <ol class="steps">
-          <li><b>1</b><span>Am Laptop: Projekt anlegen und den Kabelplan (PDF oder Bild) laden.</span></li>
+          <li><b>1</b><span>Am Laptop: Projekt anlegen und den Kabelplan (PDF oder Bild) laden. Weitere Pläne kommen später über „+ Plan“ dazu.</span></li>
           <li><b>2</b><span>„Projektdatei speichern“ und aufs iPad bringen (AirDrop, OneDrive, Mail). Dort „Projektdatei öffnen“.</span></li>
           <li><b>3</b><span>Auf der Baustelle Stelle antippen, Foto aufnehmen, Notiz dazu.</span></li>
           <li><b>4</b><span>Projektdatei zurück an den Laptop, öffnen, Stände werden zusammengeführt. Dann exportieren.</span></li>
@@ -61,7 +62,7 @@
           <input id="newName" type="text" placeholder="z. B. Netzanschluss Halle 3" autocomplete="off">
           <div class="row">
             <label class="btn primary">Kabelplan wählen und anlegen<input type="file" id="newPlan" accept="image/*,application/pdf,.pdf"></label>
-            <label class="btn">Projektdatei öffnen<input type="file" class="importInput" accept=".zip,application/zip"></label>
+            <label class="btn">Projektdatei öffnen<input type="file" class="importInput"></label>
           </div>
           <button class="btn demoBtn" type="button" style="width:100%;margin-top:8px">Demo-Projekt mit Testplan laden</button>
         </div>
@@ -119,6 +120,7 @@
 <input type="file" id="camInput" accept="image/*" capture="environment">
 <input type="file" id="galInput" accept="image/*">
 <input type="file" id="planInput" accept="image/*,application/pdf,.pdf">
+<input type="file" id="addPlanInput" accept="image/*,application/pdf,.pdf">
 
 <script src="lib/jszip.min.js"></script>
 <script src="app.js"></script>

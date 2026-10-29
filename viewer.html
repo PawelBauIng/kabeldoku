@@ -23,6 +23,10 @@ header .grow{flex:1;min-width:0}
 .pin .h{position:absolute;left:4px;top:0;width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--accent);border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.35)}
 .pin .n{position:absolute;left:4px;top:0;width:32px;height:32px;display:grid;place-items:center;font:700 15px var(--f-display);color:#fff}
 .pin.sel .h{background:var(--ink);border-color:var(--accent)}.pin.sel .n{color:var(--panel)}
+.tabs{display:flex;gap:6px;overflow-x:auto;background:var(--panel);border-bottom:1px solid var(--line);padding:6px 16px}
+.tab{flex:none;min-height:34px;padding:0 12px;border-radius:17px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:500 13.5px var(--f-body);cursor:pointer}
+.tab.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.pt{font:600 11.5px var(--f-body);color:var(--accent);margin-left:6px}
 .zoom{position:absolute;right:12px;top:12px;display:flex;flex-direction:column;gap:6px}
 .zoom button{width:42px;height:42px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:20px;cursor:pointer}
 aside{width:380px;max-width:100%;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
@@ -46,6 +50,7 @@ aside li button:hover,aside li button.sel{background:var(--bg)}
 </head>
 <body>
 <header><div class="grow"><h1>Kabel<span>·</span>Fotodoku</h1><small id="sub"></small></div><small id="hint">Mausrad oder zwei Finger zum Zoomen, ziehen zum Verschieben, Punkt anklicken für Foto.</small></header>
+<nav class="tabs" id="tabs" hidden></nav>
 <div class="wrap">
   <div class="stage" id="stage"><img class="plan" id="plan" alt="Kabelplan"><div class="pins" id="pins"></div>
     <div class="zoom"><button type="button" id="zi" aria-label="Hineinzoomen">+</button><button type="button" id="zo" aria-label="Herauszoomen">−</button><button type="button" id="zf" aria-label="Ganzer Plan">⤢</button></div></div>
@@ -59,10 +64,13 @@ const $=i=>document.getElementById(i);const st=$("stage"),pl=$("plan"),pins=$("p
 const pad=n=>String(n).padStart(2,"0");const esc=s=>String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fz=i=>{try{return new Date(i).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}catch(e){return ""}};
 if(!D){document.body.innerHTML="<p style='padding:20px'>Keine Daten enthalten.</p>";return}
-$("sub").textContent=D.projekt+" · "+D.punkte.length+" Fotopunkte · Stand "+fz(D.exportiert);
-let v={s:1,tx:0,ty:0},sel=null;const W=D.plan.w,H=D.plan.h;
-pl.src=D.plan.src;pl.style.width=W+"px";pl.style.height=H+"px";
-function ap(){pl.style.transform="translate("+v.tx+"px,"+v.ty+"px) scale("+v.s+")";pins.innerHTML=D.punkte.map((p,i)=>"<button class='pin"+(sel===i?" sel":"")+"' data-i='"+i+"' style='left:"+(v.tx+p.x*W*v.s)+"px;top:"+(v.ty+p.y*H*v.s)+"px' aria-label='FP "+pad(p.nr)+"'><span class='h'></span><span class='n'>"+pad(p.nr)+"</span></button>").join("");
+if(!D.plaene&&D.plan){D.plaene=[{name:D.planName||"Plan",src:D.plan.src,w:D.plan.w,h:D.plan.h}];D.punkte.forEach(p=>p.p=0)}
+const PL=D.plaene;
+$("sub").textContent=D.projekt+" · "+(PL.length>1?PL.length+" Pläne · ":"")+D.punkte.length+" Fotopunkte · Stand "+fz(D.exportiert);
+let v={s:1,tx:0,ty:0},sel=null,cur=-1,W=1,H=1;
+function setPlan(k,keep){if(k===cur)return;cur=k;W=PL[k].w;H=PL[k].h;pl.style.width=W+"px";pl.style.height=H+"px";pl.onload=()=>{if(!keep)fit()};pl.src=PL[k].src;tabs();if(!keep)fit();else ap()}
+function tabs(){const t=$("tabs");if(PL.length<2){t.hidden=true;return}t.hidden=false;t.innerHTML=PL.map((q,i)=>"<button class='tab"+(i===cur?" on":"")+"' data-k='"+i+"'>"+esc(q.name)+" ("+D.punkte.filter(p=>p.p===i).length+")</button>").join("");t.querySelectorAll(".tab").forEach(b=>b.onclick=()=>setPlan(+b.dataset.k))}
+function ap(){pl.style.transform="translate("+v.tx+"px,"+v.ty+"px) scale("+v.s+")";pins.innerHTML=D.punkte.map((p,i)=>p.p!==cur?"":"<button class='pin"+(sel===i?" sel":"")+"' data-i='"+i+"' style='left:"+(v.tx+p.x*W*v.s)+"px;top:"+(v.ty+p.y*H*v.s)+"px' aria-label='FP "+pad(p.nr)+"'><span class='h'></span><span class='n'>"+pad(p.nr)+"</span></button>").join("");
   pins.querySelectorAll(".pin").forEach(b=>b.onclick=e=>{e.stopPropagation();show(+b.dataset.i)})}
 function fit(){const r=st.getBoundingClientRect();v.s=Math.min((r.width-40)/W,(r.height-40)/H);v.tx=(r.width-W*v.s)/2;v.ty=(r.height-H*v.s)/2;ap()}
 const mn=()=>{const r=st.getBoundingClientRect();return Math.min(r.width/W,r.height/H)*.5};
@@ -78,15 +86,15 @@ st.addEventListener("pointerup",up);st.addEventListener("pointercancel",up);
 st.addEventListener("wheel",e=>{e.preventDefault();const r=st.getBoundingClientRect();za(Math.exp(-e.deltaY*.0015),e.clientX-r.left,e.clientY-r.top)},{passive:false});
 $("zi").onclick=()=>{const r=st.getBoundingClientRect();za(1.5,r.width/2,r.height/2)};$("zo").onclick=()=>{const r=st.getBoundingClientRect();za(1/1.5,r.width/2,r.height/2)};$("zf").onclick=fit;
 addEventListener("resize",ap);
-function show(i){sel=i;const p=D.punkte[i];
-  $("detail").innerHTML="<h2>FP "+pad(p.nr)+"</h2>"+(p.foto?"<img id='dimg' src='"+p.foto+"' alt='Foto FP "+pad(p.nr)+"'>":"<p class='meta'>Kein Foto</p>")+"<p>"+esc(p.notiz||"Keine Notiz")+"</p><div class='meta'>"+esc(fz(p.zeit))+" · x "+p.x.toFixed(3)+" · y "+p.y.toFixed(3)+"</div>";
+function show(i){sel=i;const p=D.punkte[i];if(p.p!==cur)setPlan(p.p,true);
+  $("detail").innerHTML="<h2>FP "+pad(p.nr)+"</h2>"+(p.foto?"<img id='dimg' src='"+p.foto+"' alt='Foto FP "+pad(p.nr)+"'>":"<p class='meta'>Kein Foto</p>")+"<p>"+esc(p.notiz||"Keine Notiz")+"</p><div class='meta'>"+(PL.length>1?esc(PL[p.p].name)+" · ":"")+esc(fz(p.zeit))+" · x "+p.x.toFixed(3)+" · y "+p.y.toFixed(3)+"</div>";
   if(p.foto)$("dimg").onclick=()=>{$("lbi").src=p.foto;$("lb").hidden=false};
   const r=st.getBoundingClientRect();const fs=Math.min((r.width-40)/W,(r.height-40)/H);if(v.s<fs*2.5)v.s=Math.min(fs*3,8);v.tx=r.width/2-p.x*W*v.s;v.ty=r.height/2-p.y*H*v.s;ap();list()}
-function list(){$("list").innerHTML=D.punkte.map((p,i)=>"<li><button class='"+(sel===i?"sel":"")+"' data-i='"+i+"'>"+(p.foto?"<img class='th' src='"+p.foto+"' alt=''>":"<span class='th'></span>")+"<span><span class='t1'>FP "+pad(p.nr)+"</span><br><span class='t2'>"+esc(p.notiz||"Keine Notiz")+"</span><br><span class='t3'>"+esc(fz(p.zeit))+"</span></span></button></li>").join("");
+function list(){$("list").innerHTML=D.punkte.map((p,i)=>"<li><button class='"+(sel===i?"sel":"")+"' data-i='"+i+"'>"+(p.foto?"<img class='th' src='"+p.foto+"' alt=''>":"<span class='th'></span>")+"<span><span class='t1'>FP "+pad(p.nr)+"</span>"+(PL.length>1?"<span class='pt'>"+esc(PL[p.p].name)+"</span>":"")+"<br><span class='t2'>"+esc(p.notiz||"Keine Notiz")+"</span><br><span class='t3'>"+esc(fz(p.zeit))+"</span></span></button></li>").join("");
   $("list").querySelectorAll("button").forEach(b=>b.onclick=()=>show(+b.dataset.i))}
 $("lbc").onclick=()=>$("lb").hidden=true;$("lb").onclick=e=>{if(e.target.id==="lb")$("lb").hidden=true};
 addEventListener("keydown",e=>{if(e.key==="Escape")$("lb").hidden=true});
-pl.onload=fit;list();if(pl.complete)fit();
+setPlan(0);list();
 })();
 </script>
 </body>
